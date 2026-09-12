@@ -1,0 +1,61 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Next.js build output
+.next/
+out/
+build/
+
+# Environment variables and secrets — NEVER commit these
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+
+# TideCloak adapter config — contains vendorId, homeOrkUrl, embedded JWKS
+# (the official scaffold places this at the project root, not under data/)
+tidecloak.json
+**/tidecloak.json
+data/tidecloak.json
+data/*.json
+**/data/tidecloak.json
+
+# TideCloak local Docker data / H2 database (realm secrets, VRK material, user records)
+data/keycloakdb*
+**/data/keycloakdb*
+**/tide-support-spike/data/
+tidecloak-data/
+docker-data/
+
+# Skycloak / bootstrap secrets (not used in this spike, guarded anyway)
+.skycloak-api-key
+scripts/.skycloak-api-key
+creds.json
+cluster-create.json
+
+# Any exported policy/signing bytes or captured tokens (spike diagnostics)
+*.token
+*.doken
+signed-policy*.json
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+
+# Vercel (unused here, guarded anyway)
+.vercel
