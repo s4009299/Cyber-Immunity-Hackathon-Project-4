@@ -59,3 +59,9 @@ Thumbs.db
 
 # Vercel (unused here, guarded anyway)
 .vercel
+
+# Playwright artifacts
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/

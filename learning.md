@@ -90,3 +90,69 @@ before the container could be reached — this is an environment-level step, not
   found to diverge from documentation on this build.
 - Whether the isolated Forseti expiry experiment (signed `ExpiresAtEpoch` parameter, trusted-time
   primitive) passes on this build. Not yet attempted.
+
+---
+
+## Playwright end-to-end smoke tests
+
+Added `@playwright/test` and a minimal smoke/contract suite (`tide-support-spike/e2e/smoke.spec.ts`)
+covering the three required behaviours: the public page loading, the unauthenticated sign-in UI
+being present, and the protected API route rejecting requests without a valid bearer token.
+
+### What was implemented
+
+- `playwright.config.ts` at the app root, using Playwright's `webServer` option to run
+  `npm run start` (the production server, not the dev server) on a dedicated port (3100, to avoid
+  colliding with a developer's own `npm run dev` on 3000) before tests execute.
+- `e2e/smoke.spec.ts`: five tests —
+  - public `/` returns `200`
+  - `/` renders the "Welcome!" heading, the "Please log in to continue." prompt, and an enabled
+    "Log In" button
+  - `GET /api/protected` with no `Authorization` header returns `401` with a JSON error body
+  - `GET /api/protected` with a non-`Bearer` `Authorization` header returns `401`
+  - `GET /api/protected` with a syntactically-invalid bearer token (a fixed, obviously-fake string,
+    not a real or captured Tide token) returns a non-`200` status, exercising the route's real
+    signature-verification failure path (`verifyTideCloakToken` against the embedded JWKS)
+- `npm run test:e2e` (builds the app, then runs the Playwright suite) and
+  `npm run test:e2e:report` (opens the last HTML report) added to `package.json`.
+- `.gitignore` updated to exclude Playwright's `test-results/`, `playwright-report/`,
+  `blob-report/`, and cache directory.
+
+### What was deliberately NOT implemented
+
+- No real Tide user login, no captured or synthetic Tide-issued JWT, no automation of the Tide
+  enclave/browser approval flow. The suite tests the boundary right up to where a real login would
+  begin (the Log In button being present and clickable) and the server-side rejection behaviour of
+  the protected route — it does not cross into an authenticated session anywhere.
+- No username, password, or token value of any kind is stored in the test files, the Playwright
+  config, or `.env`. The one token-shaped string used in a test (`not-a-real-jwt.invalid.token`) is
+  a fixed placeholder chosen specifically to be unparseable as a JWT — it is not a weakened or
+  bypassed check; the route's real verification code path throws on it exactly as it would on any
+  other invalid input.
+- The TideCloak Docker container is not started, stopped, or depended upon by `playwright.config.ts`
+  or the test suite. The tests are self-contained and pass with TideCloak down, because the
+  behaviours under test (public page rendering, login-button presence, and missing/invalid-token
+  rejection) do not require a live TideCloak connection.
+
+### Problem encountered: Playwright's own browser download timed out
+
+`npx playwright install chromium` failed twice with a connection timeout while downloading the
+Chromium binary (`cdn.playwright.dev`), despite basic TCP connectivity to that host succeeding —
+this looked like a bandwidth/throughput constraint on the download itself, not a blocked or
+unreachable endpoint. Increasing `PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT` did not resolve it either.
+
+**Resolution**: configured Playwright to use the system-installed Microsoft Edge browser via the
+`channel: 'msedge'` project option, instead of Playwright's own downloaded Chromium binary. This is
+a standard, supported Playwright configuration (not a workaround that weakens test coverage) — Edge
+is Chromium-based and exercises the same rendering and JavaScript engine Playwright's own bundled
+Chromium would. Anyone running this suite on a machine without Edge installed, or without the
+network constraint we hit, can remove the `channel` line to use Playwright's normal bundled
+browser instead.
+
+### Verification performed
+
+- `npm run build` — production build, run standalone: succeeded, all 6 routes compiled, TypeScript
+  check clean.
+- `npx playwright test` (against the already-built app) — 5/5 passed.
+- `npm run test:e2e` (full build-then-test pipeline, matching what CI or a fresh clone would run) —
+  5/5 passed, ~10s runtime.
