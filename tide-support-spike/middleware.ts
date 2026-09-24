@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { createTideCloakMiddleware } from "@tidecloak/nextjs/server";
 import type { TidecloakConfig } from "@tidecloak/nextjs/server";
 import rawConfig from "./tidecloak.json";
+import { logSafeError } from "./lib/safeLog";
 
 // tidecloak.json is a placeholder ({}) until `npm run init` provisions the realm
 // and writes the real adapter config. Type it via the SDK's own config shape so
@@ -19,10 +20,8 @@ export default createTideCloakMiddleware({
     "/protected": ["offline_access"],
   },
   onFailure: (ctx: { token: string | null }, req: NextRequest) => {
-    console.debug("Token verification failed", {
-      path: req.nextUrl.pathname,
-      ctx,
-    });
+    // Never log ctx directly — it carries the raw token string.
+    console.debug(`[middleware.onFailure] ${req.nextUrl.pathname}`);
     return NextResponse.json(
       { error: "Access forbidden: invalid token" },
       { status: 403 }
@@ -33,7 +32,7 @@ export default createTideCloakMiddleware({
   },
   // Note: onError receives (err, req) - the error is the first argument.
   onError: (err: unknown, req: NextRequest) => {
-    console.error("[Middleware] error verifying token for", req.nextUrl.pathname, err);
+    logSafeError(`middleware:${req.nextUrl.pathname}`, err);
     // if something unexpected happens, redirect to your auth flow
     const redirectUrl = new URL("/auth/redirect", req.url);
     return NextResponse.redirect(redirectUrl);

@@ -41,6 +41,15 @@ cluster-create.json
 *.doken
 signed-policy*.json
 
+# Forseti local scratch: fetched vuid, computed contract hashes, compile-check
+# stubs. These are local working files, never secrets to ship, but the vuid
+# in particular must never be committed.
+**/forseti-check/owner-vuid.txt
+**/forseti-check/contractId.txt
+
+# Signed Forseti policy bytes (stored server-side by the app at runtime)
+**/data/signed-policies/
+
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts

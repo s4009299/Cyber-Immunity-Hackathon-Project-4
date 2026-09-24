@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyTideCloakToken } from '@tidecloak/nextjs/server'
 import tcConfig from '../../../tidecloak.json'
+import { logSafeError } from '../../../lib/safeLog'
 
 const ALLOWED_ROLE = 'offline_access'
 
@@ -29,7 +30,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       { status: 200 }
     )
   } catch (err) {
-    console.error('Token verification failed:', err)
+    logSafeError('protected.GET', err)
     return NextResponse.json(
       { error: 'Internal Server Error' },
       { status: 500 }
