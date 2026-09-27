@@ -1,39 +1,9 @@
 'use client'
 
-import { useCallback, type CSSProperties } from 'react'
+import { useCallback } from 'react'
 import { useTideCloak } from '@tidecloak/nextjs'
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
-
-const containerStyle: CSSProperties = {
-  minHeight: '100vh',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  background: '#f5f5f5',
-  margin: 0,
-}
-
-const cardStyle: CSSProperties = {
-  background: '#fff',
-  padding: '2rem',
-  borderRadius: '8px',
-  boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-  textAlign: 'center',
-  maxWidth: '360px',
-  width: '100%',
-}
-
-const buttonStyle: CSSProperties = {
-  marginTop: '1rem',
-  padding: '0.75rem 1.5rem',
-  fontSize: '1rem',
-  borderRadius: '4px',
-  border: 'none',
-  background: '#0070f3',
-  color: '#fff',
-  cursor: 'pointer',
-}
 
 export default function LoginPage() {
   const { login, authenticated } = useTideCloak()
@@ -50,16 +20,46 @@ export default function LoginPage() {
   }, [authenticated])
 
   return (
-    <div style={containerStyle}>
-        <div style={cardStyle}>
-          <h1 style={{ margin: 0, fontSize: '1.75rem' }}>Welcome!</h1>
-          <p style={{ color: '#555', marginTop: '0.5rem' }}>
+    <div className="centered-shell">
+      <main id="main-content" className="card card--elevated" style={{ maxWidth: 400, width: '100%' }}>
+        <div className="stack" style={{ alignItems: 'center', textAlign: 'center', gap: '0.5rem' }}>
+          <span
+            aria-hidden="true"
+            style={{
+              width: '3rem',
+              height: '3rem',
+              borderRadius: '12px',
+              background: 'linear-gradient(135deg, var(--teal-500), var(--blue-500))',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--white)',
+              fontWeight: 700,
+              fontSize: '1.1rem',
+            }}
+          >
+            TC
+          </span>
+
+          <span className="eyebrow">Secure IT Support Portal</span>
+          <h1 style={{ margin: 0, fontSize: '1.6rem', color: 'var(--navy-900)' }}>Welcome!</h1>
+          <p className="muted" style={{ margin: 0 }}>
             Please log in to continue.
           </p>
-          <button onClick={onLogin} style={buttonStyle}>
-            Log In
-          </button>
         </div>
+
+        <button
+          onClick={onLogin}
+          className="btn btn-primary btn-block"
+          style={{ marginTop: '1.5rem', padding: '0.75rem 1.15rem', fontSize: '0.95rem' }}
+        >
+          Log In
+        </button>
+
+        <p className="muted" style={{ marginTop: '1.25rem', textAlign: 'center', fontSize: '0.75rem' }}>
+          Protected by TideCloak. Access to cases is verified and authorized on every request.
+        </p>
+      </main>
     </div>
   )
 }

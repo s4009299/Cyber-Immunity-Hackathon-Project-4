@@ -313,6 +313,89 @@ above, this completes the required three-state access-control round trip for cas
 both a direct TideCloak API read-back (role/CR state) and a live browser decrypt attempt (Forseti's
 actual runtime decision), never asserted from one without the other.
 
+## Stage 3 — Portal redesign
+
+### Frontend redesign: presentation-only, all security logic unchanged
+
+The portal was redesigned to a navy/blue/teal/white theme across every page (login, dashboard,
+Secure Case 001, the admin signing ceremony, the auth-redirect transition screen), with a new
+shared design system (`app/globals.css`) and a shared, mobile-collapsing top navigation component
+(`app/components/AppNav.tsx`).
+
+This was scoped as presentation-only: every existing security mechanism — TideCloak authentication,
+server-side token/role verification (`requireTideRealmAdmin`, `requireAuthenticatedUser`,
+`verifyTideCloakToken`), the customer/support-agent roles, the case-001 Forseti contract,
+policy-governed `doEncrypt`/`doDecrypt`, the case-specific access-grant/revoke flow, all existing
+protected API routes, and sanitised error logging — was left functionally untouched. Two small,
+explicitly-scoped exceptions were made because they touched files already being redesigned:
+
+- The self-encrypt/self-decrypt error paths on the dashboard (`app/home/page.tsx`) and the admin
+  signing ceremony (`app/admin/sign-policy/page.tsx`) were given the same `sanitizeError()`
+  treatment already used on the Secure Case 001 page, as defensive hardening — these paths were not
+  previously known to leak ORK URLs or long identifiers, but there was no reason to leave them
+  unsanitised once the file was already open for restyling.
+- The verbose Forseti decrypt-denial message was replaced with a fixed, user-friendly string when
+  the denial reason is specifically a missing role (see next section).
+
+### User-friendly access-denied message for missing-role decrypt failures
+
+Previously, a Forseti decrypt denial displayed the full sanitised-but-still-technical message, e.g.
+`Denied or failed: Forseti policy denied (Data, Executor): Missing role 'case-agent-access-case-001'.`
+This is now replaced in the UI with a single fixed string for the missing-role case specifically:
+
+```
+Access denied. You do not have permission to decrypt this case.
+```
+
+**How this was implemented without weakening logging**: `lib/safeLog.ts`'s error categoriser was
+extended to recognise the `"Forseti policy denied ... Missing role '...'"` message shape as a
+distinct category (`forseti-denied-missing-role`, separate from other denial types such as an
+expired doken or a contract-level rejection). The case-001 page now categorises the caught error
+*client-side* using the same closed category set, shows the fixed message only for that category,
+and — separately — reports only the category string (never the raw error) to a new endpoint,
+`POST /api/log/client-error`, for server-side logging via `logSafeCategory`.
+The complete Forseti/ORK error text (which can include gas values, ORK URLs, or other internal
+detail) never leaves the browser in any form, is never displayed beyond the fixed string, and is
+never transmitted to the server — only a value from a small closed enum is.
+
+The new logging endpoint itself is authenticated (same `requireAuthenticatedUser` guard as the
+other case-specific routes) and validates both the `operation` and `category` fields against fixed
+allowlists before logging anything, so a compromised or modified client cannot use it to inject
+free-text content into the server log.
+
+### Verification performed
+
+- `npm run build`: clean, 14 routes (including the new `/api/log/client-error`), no TypeScript
+  errors, on every build run during the redesign.
+- `npx playwright test`: 5/5 passed, including the exact heading/text/button assertions
+  (`Welcome!` / `Please log in to continue.` / an enabled `Log In` button) on the redesigned login
+  page — confirming the visual redesign did not change the DOM contract the existing suite depends
+  on.
+- `POST /api/log/client-error` tested directly with no `Authorization` header and with a
+  syntactically-invalid bearer token: both returned `401`, confirming the new endpoint is not an
+  unauthenticated log-injection surface.
+- **Manual browser walkthrough** (Chrome), performed after the redesign and the access-denied-message
+  fix:
+  - Logged in as `customer1`; reached the redesigned dashboard and Secure Case 001 page.
+  - "Verify Policy" succeeded — stored policy decoded correctly.
+  - Entered new case content ("Customer1 test case after portal redesign"), clicked "Encrypt &
+    Store" — succeeded.
+  - "Attempt Decrypt" as `customer1` — succeeded: `Decrypted: Customer1 test case after portal
+    redesign.`
+  - Logged out, logged in as `agent1` (with the case-specific role already revoked from the earlier
+    Stage 2B round trip). "Attempt Decrypt" — denied.
+  - After the access-denied-message fix was applied, repeated the `agent1` decrypt attempt: the UI
+    displayed exactly `Access denied. You do not have permission to decrypt this case.` — no
+    Forseti internals, role name, or other detail.
+  - Visually reviewed the redesigned desktop navigation, cards, forms, and both success and denial
+    states.
+
+**Not covered by the manual walkthrough above, and not claimed as verified**: the pre-grant and
+post-grant decrypt states were not re-tested during this redesign pass (only the already-revoked
+denial state and the owner-decrypt success state were exercised); mobile/narrow-viewport navigation
+behaviour (the hamburger menu collapse) has not been manually tested in a browser. These remain
+open verification items, not assumed-working.
+
 ## Open questions carried into Stage 2B
 
 - Whether the Forseti policy-signing ceremony (a separate mechanism from IGA change requests —

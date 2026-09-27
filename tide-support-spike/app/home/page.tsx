@@ -4,11 +4,24 @@ import { useTideCloak } from '@tidecloak/nextjs'
 import type { TidecloakConfig } from '@tidecloak/nextjs/server'
 import { useState, useCallback, useEffect } from 'react'
 import rawConfig from "../../tidecloak.json"
+import AppNav from '../components/AppNav'
+import Link from 'next/link'
 
 // tidecloak.json is a placeholder ({}) until `npm run init` provisions the realm
 // and writes the real adapter config. Type it via the SDK's own config shape so
 // fields like `realm` type-check regardless of the placeholder's contents.
 const tcConfig = rawConfig as TidecloakConfig
+
+// Same sanitisation used on the case-001 page: strips anything URL-shaped
+// (ORK endpoints are URLs) or long-hex-shaped (vuids/similar identifiers)
+// from any error surfaced to the UI, defensively, even though today's
+// self-encrypt/self-decrypt error paths are not known to include them.
+function sanitizeError(err: any): string {
+  let message = (err && (err.message || String(err))) || 'Failed'
+  message = message.replace(/https?:\/\/\S+/gi, '[url removed]')
+  message = message.replace(/\b[0-9a-fA-F]{16,}\b/g, '[id removed]')
+  return message
+}
 
 
 export default function HomePage() {
@@ -16,7 +29,10 @@ export default function HomePage() {
 
   const [username, setUsername] = useState("")
   const [hasDefaultRole, setHasDefaultRole] = useState(false)
+  const [isSupportAgent, setIsSupportAgent] = useState(false)
+  const [isCustomer, setIsCustomer] = useState(false)
   const [verifyResult, setVerifyResult] = useState<string | null>(null)
+  const [verifyOk, setVerifyOk] = useState<boolean | null>(null)
   const [verifying, setVerifying] = useState(false)
 
   // Self encrypt/decrypt: data is bound to THIS user's identity — only they can
@@ -37,6 +53,8 @@ export default function HomePage() {
       const defaultRole = hasRealmRole(`default-roles-${tcConfig["realm"]}`)
       setUsername(name);
       setHasDefaultRole(defaultRole)
+      setIsSupportAgent(hasRealmRole("support-agent"))
+      setIsCustomer(hasRealmRole("customer"))
 
       // Restore the saved note. Only the CIPHERTEXT is persisted; we decrypt it
       // client-side here so the field shows plaintext when you log back in.
@@ -57,6 +75,7 @@ export default function HomePage() {
   const onVerify = useCallback(async () => {
     setVerifying(true)
     setVerifyResult(null)
+    setVerifyOk(null)
     try {
       const res = await fetch('/api/protected', {
         method: 'GET',
@@ -66,12 +85,15 @@ export default function HomePage() {
       })
       const data = await res.json()
       if (res.ok) {
-        setVerifyResult(`✅ Authorized: vuid=${data.vuid}, key=${data.userkey}`)
+        setVerifyOk(true)
+        setVerifyResult(`Session verified server-side. Role checks and signature verification passed.`)
       } else {
-        setVerifyResult(`❌ ${res.status} - ${data.error || res.statusText}`)
+        setVerifyOk(false)
+        setVerifyResult(`${res.status} — ${data.error || res.statusText}`)
       }
     } catch (err: any) {
-      setVerifyResult(`❌ Network error: ${err.message}`)
+      setVerifyOk(false)
+      setVerifyResult(`Network error: ${sanitizeError(err)}`)
     } finally {
       setVerifying(false)
     }
@@ -90,103 +112,153 @@ export default function HomePage() {
       setText(String(pt))
       setStatus("Message successfully stored")
     } catch (err: any) {
-      setCryptoErr(err.message || "Failed")
+      setCryptoErr(sanitizeError(err))
     } finally {
       setBusy(false)
     }
   }, [text, doEncrypt, doDecrypt])
 
+  const roleLabel = isSupportAgent ? 'Support Agent' : isCustomer ? 'Customer' : 'User'
+
   return (
-    <div style={containerStyle}>
-      <div style={cardStyle}>
-        <h1 style={{ margin: 0, fontSize: '1.5rem' }}>Hello, {username}!</h1>
-        <p style={{ margin: '0.5rem 0', color: '#555' }}>
-          Has default roles? <strong>{hasDefaultRole ? 'Yes' : 'No'}</strong>
-        </p>
+    <div className="page-shell">
+      <AppNav />
+      <main id="main-content" className="page-main">
+        <div className="stack" style={{ gap: '1.5rem' }}>
+          {/* ── Welcome header with role + session indicators ── */}
+          <section className="card">
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'flex-start',
+                justifyContent: 'space-between',
+                gap: '1rem',
+              }}
+            >
+              <div>
+                <span className="eyebrow">Dashboard</span>
+                <h1 style={{ margin: '0.25rem 0 0', fontSize: '1.5rem', color: 'var(--navy-900)' }}>
+                  Hello, {username || 'there'}
+                </h1>
+                <p className="muted" style={{ margin: '0.35rem 0 0' }}>
+                  Signed in to the Secure IT Support Portal
+                </p>
+              </div>
 
-        <button onClick={onLogout} style={buttonStyle}>
-          Log out
-        </button>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <span className="badge badge-info">
+                  <span className="badge-dot" aria-hidden="true" />
+                  Role: {roleLabel}
+                </span>
+                <span className={`badge ${hasDefaultRole ? 'badge-success' : 'badge-neutral'}`}>
+                  <span className="badge-dot" aria-hidden="true" />
+                  {hasDefaultRole ? 'Default roles active' : 'Default roles missing'}
+                </span>
+              </div>
+            </div>
+          </section>
 
-        <button
-          onClick={onVerify}
-          style={{ ...buttonStyle, marginTop: '0.5rem' }}
-          disabled={verifying}
-        >
-          {verifying ? 'Verifying…' : 'Verify Token'}
-        </button>
+          {/* ── Quick access to the secure case workflow ── */}
+          <section className="card">
+            <div className="card-header">
+              <div>
+                <h2 className="card-title">Secure case access</h2>
+                <p className="card-subtitle">
+                  Policy-governed encryption and decryption for support cases you own or have been
+                  granted access to.
+                </p>
+              </div>
+              <span className="badge badge-teal">
+                <span className="badge-dot" aria-hidden="true" />
+                Forseti-protected
+              </span>
+            </div>
+            <Link href="/case-001" className="btn btn-teal">
+              Open Case-001 →
+            </Link>
+          </section>
 
-        {verifyResult && (
-          <p style={{ marginTop: '1rem', color: verifyResult.startsWith('✅') ? 'green' : 'red' }}>
-            {verifyResult}
-          </p>
-        )}
+          {/* ── Session verification ── */}
+          <section className="card">
+            <div className="card-header">
+              <div>
+                <h2 className="card-title">Session security check</h2>
+                <p className="card-subtitle">
+                  Confirms your access token is verified server-side against TideCloak, including
+                  its signature and required role.
+                </p>
+              </div>
+            </div>
 
-        {/* ── Encrypted note: always shown decrypted; Submit re-encrypts then decrypts ── */}
-        <div style={{ marginTop: '1.5rem', borderTop: '1px solid #eee', paddingTop: '1rem', textAlign: 'left' }}>
-          <h2 style={{ fontSize: '1.1rem', margin: '0 0 0.25rem' }}>Your encrypted note</h2>
-          <p style={{ margin: '0 0 0.5rem', color: '#777', fontSize: '0.85rem' }}>
-            This is an encrypted textbox under your own identity — only you can decrypt it.
-          </p>
+            <button
+              onClick={onVerify}
+              className="btn btn-primary"
+              disabled={verifying}
+              aria-busy={verifying}
+            >
+              {verifying ? 'Verifying…' : 'Verify Token'}
+            </button>
 
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Type your note…"
-            style={textareaStyle}
-          />
-          <button onClick={onSubmit} style={buttonStyle} disabled={busy}>
-            {busy ? 'Submitting…' : 'Submit'}
+            {verifyResult && (
+              <p
+                role="status"
+                className={`alert ${verifyOk ? 'alert-success' : 'alert-danger'}`}
+                style={{ marginTop: '1rem' }}
+              >
+                {verifyResult}
+              </p>
+            )}
+          </section>
+
+          {/* ── Encrypted personal note ── */}
+          <section className="card">
+            <div className="card-header">
+              <div>
+                <h2 className="card-title">Your encrypted note</h2>
+                <p className="card-subtitle">
+                  Protected under your own identity — only you can decrypt this note.
+                </p>
+              </div>
+              <span className="badge badge-success">
+                <span className="badge-dot" aria-hidden="true" />
+                Self-encrypted
+              </span>
+            </div>
+
+            <div className="form-field">
+              <label htmlFor="note-text" className="visually-hidden">
+                Encrypted note content
+              </label>
+              <textarea
+                id="note-text"
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder="Type your note…"
+                className="textarea-input"
+              />
+              <button onClick={onSubmit} className="btn btn-primary" disabled={busy} aria-busy={busy} style={{ alignSelf: 'flex-start' }}>
+                {busy ? 'Submitting…' : 'Submit'}
+              </button>
+
+              {status && (
+                <p role="status" className="alert alert-success">
+                  {status}
+                </p>
+              )}
+              {cryptoErr && (
+                <p role="alert" className="alert alert-danger">
+                  {cryptoErr}
+                </p>
+              )}
+            </div>
+          </section>
+
+          <button onClick={onLogout} className="btn btn-secondary" style={{ alignSelf: 'flex-start' }}>
+            Log out
           </button>
-
-          {status && <p style={{ color: 'green', marginTop: '0.5rem', fontSize: '0.85rem' }}>{status}</p>}
-
-          {cryptoErr && <p style={{ color: 'red', marginTop: '0.5rem' }}>{cryptoErr}</p>}
         </div>
-      </div>
+      </main>
     </div>
   )
 }
-
-const textareaStyle: React.CSSProperties = {
-  width: '100%',
-  minHeight: '64px',
-  padding: '0.5rem',
-  borderRadius: '4px',
-  border: '1px solid #ccc',
-  boxSizing: 'border-box',
-  fontFamily: 'inherit',
-  fontSize: '0.9rem',
-}
-
-
-const containerStyle: React.CSSProperties = {
-  minHeight: '100vh',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  background: '#f5f5f5',
-  margin: 0,
-}
-
-const cardStyle: React.CSSProperties = {
-  background: '#fff',
-  padding: '2rem',
-  borderRadius: '8px',
-  boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-  textAlign: 'center',
-  maxWidth: '660px',
-  width: '100%',
-}
-
-const buttonStyle: React.CSSProperties = {
-  marginTop: '1rem',
-  padding: '0.75rem 1.5rem',
-  fontSize: '1rem',
-  borderRadius: '4px',
-  border: 'none',
-  background: '#0070f3',
-  color: '#fff',
-  cursor: 'pointer',
-}
-

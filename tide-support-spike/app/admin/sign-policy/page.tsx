@@ -3,6 +3,18 @@
 import { useTideCloak } from '@tidecloak/nextjs'
 import { useState, useCallback } from 'react'
 import { CASE_001_CONTRACT_SOURCE } from '../../../lib/forsetiContract'
+import AppNav from '../../components/AppNav'
+
+// Same sanitisation used on the case-001 page: this ceremony talks directly
+// to the Tide enclave/ORK network, so its failure messages are the most
+// likely in the app to mention an ORK URL or similar identifier. Strip
+// anything URL-shaped or long-hex-shaped before ever displaying an error.
+function sanitizeError(err: any): string {
+  let message = (err && (err.message || String(err))) || 'Unknown error'
+  message = message.replace(/https?:\/\/\S+/gi, '[url removed]')
+  message = message.replace(/\b[0-9a-fA-F]{16,}\b/g, '[id removed]')
+  return message
+}
 
 // One-time admin ceremony: sign the case-001 Forseti policy.
 //
@@ -144,20 +156,32 @@ export default function SignPolicyPage() {
 
       setStatus('✅ Policy signed and stored successfully for case-001.')
     } catch (err: any) {
-      setError(err.message || String(err))
+      setError(sanitizeError(err))
       setStatus('')
     } finally {
       setBusy(false)
     }
   }, [])
 
-  if (isInitializing) return <p>Initializing...</p>
+  if (isInitializing) {
+    return (
+      <div className="centered-shell">
+        <p style={{ color: 'var(--white)' }}>Initializing…</p>
+      </div>
+    )
+  }
 
   if (!authenticated) {
     return (
-      <div style={{ padding: '2rem' }}>
-        <p>You must log in as the Tide admin to sign the case-001 policy.</p>
-        <button onClick={login}>Log In</button>
+      <div className="centered-shell">
+        <main id="main-content" className="card card--elevated" style={{ maxWidth: 420, width: '100%', textAlign: 'center' }}>
+          <span className="eyebrow">Admin ceremony</span>
+          <h1 style={{ margin: '0.5rem 0', fontSize: '1.3rem' }}>Sign in required</h1>
+          <p className="muted">You must log in as the Tide admin to sign the case-001 policy.</p>
+          <button onClick={login} className="btn btn-primary btn-block" style={{ marginTop: '1rem' }}>
+            Log In
+          </button>
+        </main>
       </div>
     )
   }
@@ -174,27 +198,60 @@ export default function SignPolicyPage() {
 
   if (!isAdmin) {
     return (
-      <div style={{ padding: '2rem' }}>
-        <p>
-          You are logged in, but this account does not hold the <code>tide-realm-admin</code>{' '}
-          role. Only the enrolled Tide realm administrator can sign the case-001 policy.
-        </p>
+      <div className="page-shell">
+        <AppNav />
+        <main id="main-content" className="page-main page-main--narrow">
+          <section className="card">
+            <span className="badge badge-danger">
+              <span className="badge-dot" aria-hidden="true" />
+              Restricted
+            </span>
+            <p style={{ marginTop: '0.75rem' }}>
+              You are logged in, but this account does not hold the <code>tide-realm-admin</code>{' '}
+              role. Only the enrolled Tide realm administrator can sign the case-001 policy.
+            </p>
+          </section>
+        </main>
       </div>
     )
   }
 
   return (
-    <div style={{ padding: '2rem', maxWidth: 640 }}>
-      <h1>Sign case-001 Forseti Policy</h1>
-      <p>
-        This is a one-time admin ceremony. It fetches customer1's vuid dynamically, constructs
-        the case-001 policy, and signs it via the Tide enclave (one browser approval popup).
-      </p>
-      <button onClick={onSign} disabled={busy}>
-        {busy ? 'Signing...' : 'Sign Policy'}
-      </button>
-      {status && <p style={{ marginTop: '1rem' }}>{status}</p>}
-      {error && <p style={{ marginTop: '1rem', color: 'red' }}>Error: {error}</p>}
+    <div className="page-shell">
+      <AppNav />
+      <main id="main-content" className="page-main page-main--narrow">
+        <section className="card">
+          <div className="card-header">
+            <div>
+              <span className="eyebrow">Admin ceremony</span>
+              <h1 style={{ margin: '0.25rem 0 0', fontSize: '1.35rem', color: 'var(--navy-900)' }}>
+                Sign case-001 Forseti policy
+              </h1>
+            </div>
+            <span className="badge badge-warning">
+              <span className="badge-dot" aria-hidden="true" />
+              tide-realm-admin only
+            </span>
+          </div>
+          <p className="muted">
+            This is a one-time admin ceremony. It fetches customer1's vuid dynamically, constructs
+            the case-001 policy, and signs it via the Tide enclave (one browser approval popup).
+          </p>
+          <button onClick={onSign} className="btn btn-primary" disabled={busy} aria-busy={busy} style={{ marginTop: '0.5rem' }}>
+            {busy ? 'Signing...' : 'Sign Policy'}
+          </button>
+          {status && (
+            <p role="status" className="alert alert-info" style={{ marginTop: '1rem' }}>
+              {status}
+            </p>
+          )}
+          {error && (
+            <p role="alert" className="alert alert-danger" style={{ marginTop: '1rem' }}>
+              Error: {error}
+            </p>
+          )}
+        </section>
+      </main>
     </div>
   )
 }

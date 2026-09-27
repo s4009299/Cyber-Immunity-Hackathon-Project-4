@@ -35,17 +35,10 @@ export default function RedirectPage() {
   }, [authenticated, isInitializing, router])
 
   return (
-    <div style={containerStyle}>
-      <p>{message}</p>
+    <div className="centered-shell">
+      <p role="status" style={{ color: 'var(--white)', fontSize: '1rem' }}>
+        {message}
+      </p>
     </div>
   )
-}
-
-const containerStyle: React.CSSProperties = {
-  minHeight: '100vh',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  fontSize: '1rem',
-  color: '#555',
 }
