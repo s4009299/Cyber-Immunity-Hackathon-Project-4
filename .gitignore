@@ -50,6 +50,12 @@ signed-policy*.json
 # Signed Forseti policy bytes (stored server-side by the app at runtime)
 **/data/signed-policies/
 
+# One-time Tide account-enrollment links (link-tide-account-action URLs) saved
+# locally as a scratch file instead of being printed to chat/terminal history.
+# These are time-limited, single-use action URLs, not long-lived credentials,
+# but must never be committed.
+**/enrollment-link.txt
+
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts

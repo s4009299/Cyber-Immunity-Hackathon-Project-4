@@ -102,15 +102,19 @@ export default function CaseOnePage() {
       const bytes = await fetchPolicyBytes()
       const { Models } = await import('@tideorg/js')
       const { Policy } = Models as any
+      // Still fully decodes the policy to confirm it is well-formed and
+      // signed before reporting success — only the user-facing message
+      // changed. version/modelIds/approvalType/executionType are decoded
+      // here but intentionally never surfaced in the UI.
       const policy = Policy.from(bytes)
       const hasSignature = !!policy.signature && policy.signature.length > 0
+      if (!hasSignature) {
+        throw new Error('Stored policy is missing a signature')
+      }
       setVerifyOk(true)
       setVerifyStatus(
-        `Policy decoded. version=${policy.version}, ` +
-          `modelIds=[${policy.modelIds.join(', ')}], ` +
-          `approvalType=${policy.approvalType}, executionType=${policy.executionType}, ` +
-          `signaturePresent=${hasSignature}. ` +
-          `(contractId, params, and signature bytes are intentionally not displayed.)`
+        'Policy loaded successfully. This case is protected by a signed encryption and ' +
+          'decryption policy. Sensitive policy details remain hidden.'
       )
     } catch (err: any) {
       setVerifyOk(false)
@@ -247,10 +251,10 @@ export default function CaseOnePage() {
           <section className="card">
             <div className="card-header">
               <div>
-                <h2 className="card-title">1. Verify stored policy</h2>
+                <h2 className="card-title">1. Check case security</h2>
                 <p className="card-subtitle">
-                  Decodes the signed policy's shape only. The contractId, signed parameters
-                  (including the owner VUID), and signature bytes are never displayed.
+                  Checks that a signed security policy protects this case. Sensitive policy
+                  details remain hidden.
                 </p>
               </div>
               <span className="badge badge-info">
@@ -259,7 +263,7 @@ export default function CaseOnePage() {
               </span>
             </div>
             <button onClick={onVerifyPolicy} className="btn btn-primary" disabled={verifyBusy} aria-busy={verifyBusy}>
-              {verifyBusy ? 'Verifying...' : 'Verify Policy'}
+              {verifyBusy ? 'Checking...' : 'Check Security'}
             </button>
             {verifyStatus && (
               <p

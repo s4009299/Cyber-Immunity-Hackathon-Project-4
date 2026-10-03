@@ -470,3 +470,81 @@ browser instead.
 - `npx playwright test` (against the already-built app) — 5/5 passed.
 - `npm run test:e2e` (full build-then-test pipeline, matching what CI or a fresh clone would run) —
   5/5 passed, ~10s runtime.
+
+
+---
+
+## Week 6 — Full access-control round trip re-verified end-to-end
+
+A complete, fresh pass through the case-001 access-control round trip was run and confirmed live
+in the browser, using new case content ("Week 6 validation test") rather than reusing earlier
+ciphertext, so this run is independent evidence rather than a repeat of the same stored result.
+
+1. **Policy load**: logged in as `customer1`, used "Check case security" on the Secure Case 001
+   page — the signed policy loaded successfully (friendly message only; no technical fields
+   displayed).
+2. **Owner encrypt/decrypt**: `customer1` encrypted and stored "Week 6 validation test", then
+   immediately decrypted it back successfully — confirming owner access works end-to-end on fresh
+   content.
+3. **Pre-grant denial**: `agent1` (role not yet granted) attempted to decrypt the same ciphertext
+   — denied, as expected.
+4. **Grant via IGA**: the `case-agent-access-case-001` role was granted to `agent1` through the
+   normal IGA change-request flow (submit → verify still-pending/ineffective → authorise → commit
+   → verify effective), following the same discipline established in Stage 2B.
+5. **Post-grant success**: `agent1` logged out and back in to pick up a fresh doken carrying the
+   new role, then successfully decrypted the Week 6 content.
+6. **Revoke via IGA**: the role was revoked through the same IGA change-request flow (submit →
+   verify still-effective → authorise → commit → verify removed).
+7. **Post-revocation re-denial**: `agent1` logged out and back in again (fresh doken, role now
+   absent) and attempted to decrypt the same content. Result:
+
+   ```
+   Access denied. You do not have permission to decrypt this case.
+   ```
+
+   This is the user-friendly message introduced earlier in Stage 3 — confirming that fix is
+   correctly wired into a genuine, freshly-reproduced Forseti missing-role denial, not just the
+   earlier test case.
+
+This closes the full cycle — **denied → granted-and-allowed → revoked-and-denied-again** — a second
+time, on new content, with the final denial going through the production-facing friendly-message
+path rather than the raw Forseti error string used in the original Stage 2B round trip.
+
+### Resolved blockers
+
+- **Intermittent ORK threshold failure** (`TIDE-TIDEJS-NET-THRESHOLD_FAILURE: 0 of 20 ORKs
+  responded successfully`, with every PreSign request reporting "This Tide Request has Expired").
+  First seen during the original policy-signing ceremony (Stage 2B). Root cause understood to be
+  the Tide request envelope's own validity window being exceeded by the delay between generating
+  the request and it reaching the ORK network — not a defect in the policy or contract. Resolved by
+  retrying the affected ceremony promptly from a fresh page load rather than reusing an
+  approved-but-stale request.
+- **Tide-linked administrator enrollment/access issue**: the `support-spike` realm's Tide-linked
+  `admin` account (distinct from the temporary master-realm bootstrap admin credentialed via
+  `KC_BOOTSTRAP_ADMIN_USERNAME`/`KC_BOOTSTRAP_ADMIN_PASSWORD` in `.env`) has no password stored
+  anywhere in this repository — its credential is held by the Tide enclave/ORK network behind a
+  one-time enrollment link, not a conventional Keycloak password. When admin access needed
+  re-establishing, a fresh one-time enrollment link
+  (`POST /tideAdminResources/get-required-action-link` with `link-tide-account-action`, one-hour
+  lifespan) was minted using the master-realm bootstrap admin, and the existing `admin` user
+  re-completed enrollment through it. The user's ID, roles (`default-roles-support-spike` realm
+  role, `tide-realm-admin` client role on `realm-management`), and Tide identity attribute
+  *presence* (`vuid`, `tideUserKey`, `tideInvitable` — values never read or displayed) were
+  recorded before and verified unchanged after, confirming the existing account and its privileges
+  were preserved rather than replaced.
+- **Requirement to use the support-spike realm console and Secure Web Enclave**: governed actions
+  (role creation/assignment/revocation approvals, Forseti policy signing, Tide account enrollment)
+  cannot be completed through the master Keycloak admin console or plain REST calls alone — each
+  requires either the TideCloak Admin Console scoped to the `support-spike` realm (for IGA
+  change-request authorisation) or a live Tide Secure Web Enclave session in the browser (for
+  enrollment links and policy-signing approval popups). Scripted/API-only automation can submit and
+  read back the state of these actions, but the human-in-the-loop enclave/console step is not
+  bypassable, by design.
+- **Requirement to refresh the user session after role changes**: a role grant or revocation taking
+  effect on the TideCloak server side is not sufficient on its own — the already-logged-in
+  browser's doken is a point-in-time snapshot of the user's roles at login. Every grant/revoke
+  verification in this project (Stage 2B originally, and again in this Week 6 pass) required
+  logging the affected user out and back in before the new role state was reflected in their
+  decrypt attempt. Treating a role change as "live" without a fresh login would have produced a
+  false negative (post-grant) or false positive (post-revoke, i.e. a stale session still
+  succeeding) in testing.
