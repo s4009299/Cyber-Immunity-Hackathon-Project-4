@@ -22,6 +22,7 @@ needed, choose your own value and keep it out of version control.
 ```powershell
 git clone <repo-url>
 cd Cyber-Immunity-Hackathon-Project-4
+git checkout spike/tide-case-access-grant
 ```
 
 ## 3. Create the `data/` directory
@@ -35,16 +36,18 @@ New-Item -ItemType Directory -Path "tide-support-spike\data" -Force
 ## 4. Create the TideCloak container (first time only)
 
 Run from anywhere — `docker run` needs an **absolute** path for the volume mount. Replace
-`<ABSOLUTE_PATH_TO_REPO>` and `<CHOOSE_A_PASSWORD>` (a brand-new password, not reused from
-anywhere else):
+`<ABSOLUTE_PATH_TO_REPO>`. At the prompt, choose a brand-new local password and use the same
+value when editing `.env` in step 5:
 
 ```powershell
+$securePassword = Read-Host "Choose a local TideCloak bootstrap password" -AsSecureString
+$bootstrapPassword = [System.Net.NetworkCredential]::new("", $securePassword).Password
 docker run -d `
   --name tidecloak `
   -p 8080:8080 `
   -v "<ABSOLUTE_PATH_TO_REPO>\tide-support-spike\data:/opt/keycloak/data/h2" `
   -e KC_BOOTSTRAP_ADMIN_USERNAME=admin `
-  -e KC_BOOTSTRAP_ADMIN_PASSWORD=<CHOOSE_A_PASSWORD> `
+  -e "KC_BOOTSTRAP_ADMIN_PASSWORD=$bootstrapPassword" `
   -e USER_HOME_ORK=https://ork1.tideprotocol.com `
   -e SYSTEM_HOME_ORK=https://ork1.tideprotocol.com `
   -e THRESHOLD_T=14 `
@@ -79,9 +82,10 @@ cd tide-support-spike
 Copy-Item .env.example .env
 ```
 
-Edit `.env` and set `KC_BOOTSTRAP_ADMIN_USERNAME` / `KC_BOOTSTRAP_ADMIN_PASSWORD` to **exactly**
-what you used in the `docker run` command in step 4 — the provisioning script authenticates to
-TideCloak's master realm using these values.
+This is the **app-root** file at `tide-support-spike/.env`, not `init/.env.example`.
+Set `KC_BOOTSTRAP_ADMIN_USERNAME` and `KC_BOOTSTRAP_ADMIN_PASSWORD` to **exactly** what you used
+in the `docker run` command in step 4. Leave `NEW_REALM_NAME=support-spike` for this test plan.
+The script now reads this file directly. Do not commit `.env` or send it with test results.
 
 ## 6. Install dependencies
 
@@ -95,22 +99,18 @@ npm install
 npm run init
 ```
 
-This runs `init/tcinit.sh` (reads `init/realm.json`, talks to the running container).
+This runs `init/tcinit.sh` (reads `init/realm.json`, talks to the running container). The script
+reads `tide-support-spike/.env` itself, including when Bash is launched from PowerShell/WSL.
+The precedence is: variables explicitly available to Bash, then app-root `.env`, then the
+scaffold defaults in `init/.env.example`. Next.js does not load `.env` for arbitrary Bash scripts.
+The app-root file is therefore required for this guide's `support-spike` realm and bootstrap
+password. The script stops **before making a TideCloak change** if that password is missing or
+still a placeholder. Check that its output says `Creating realm 'support-spike'...`; if it says
+`nextjs-test`, stop and check the branch and the location/content of the app-root `.env`.
 
-**⚠️ Windows/WSL-specific requirement, confirmed this session**: if you run `bash init/tcinit.sh`
-directly from a PowerShell session with environment variables set via `$env:...`, WSL does **not**
-automatically forward them into the bash process — the script will silently fall back to its
-built-in defaults (wrong realm name, wrong credentials) and fail with an unrelated-looking `HTTP
-401` on realm creation. This was reproduced directly in validation. If you need to override any
-default (realm name, port, etc.) when invoking bash manually, you must set `WSLENV` to forward
-each variable, e.g.:
-```powershell
-$env:NEW_REALM_NAME = "support-spike"
-$env:WSLENV = "NEW_REALM_NAME/u"
-bash init/tcinit.sh
-```
-`npm run init` runs the script with its own defaults from `init/.env.example`-derived values and
-does not require this workaround for a standard run.
+**Do not rerun the script blindly after a partial failure.** Check whether `support-spike` was
+already created and record the first failed step. Provisioning a half-finished realm may require
+manual recovery; ask the project owner before deleting or recreating any realm or data.
 
 **Confirmed working this session, step by step, against a fresh isolated realm**
 (`validate-test`, on the throwaway `tidecloak-validate` container — not the realm used by the
@@ -235,6 +235,14 @@ existing doken is a point-in-time snapshot taken at login and does not update it
 directly confirmed (not just assumed) during this project's Week 6 testing, recorded in
 `learning.md`.
 
+## Fresh-machine handoff note
+
+This guide's original isolated validation stopped at the admin enrollment link. A tester must
+still create and enroll `customer1` and `agent1`, approve governed role changes, sign the policy,
+and create test case data in **their own** realm. Passwords for accounts on another developer's
+local container do not create those accounts here. Record the first setup error and its step;
+do not mark TC07–TC11 runnable until an enrolled Tide-linked realm admin is available locally.
+
 ---
 
 ## Summary: what this session actually verified vs. what remains manual
@@ -256,10 +264,12 @@ directly confirmed (not just assumed) during this project's Week 6 testing, reco
 | case-001 test data creation | Not re-run; documented from prior sessions' confirmed behaviour |
 | Grant/revoke + required re-login | Not re-run; previously directly confirmed, recorded in `learning.md` |
 
-**Nothing failed outright** in what was actually executed. The one real friction point found and
-fixed during validation was the WSLENV requirement for passing overridden environment variables
-into `bash init/tcinit.sh` on Windows — documented above in step 7, and already partially flagged
-in `docs/STAGE_1_SUMMARY.md`'s blockers list from the original setup.
+**Later independent testing found a setup failure:** the script originally loaded only
+`init/.env.example`, while step 5 configured the app-root `.env`. This selected `nextjs-test`
+and a placeholder admin password, leading to an HTTP 401. The script and step 7 have been
+updated to read the app-root `.env` and fail early for a missing or placeholder password. The
+configuration fix has been checked locally without a live TideCloak run; the complete fresh
+setup still needs independent verification by the tester.
 
 The working `tidecloak` container (port 8080) and its `data/` directory were not stopped,
 restarted, or modified at any point during this validation — confirmed by direct inspection before

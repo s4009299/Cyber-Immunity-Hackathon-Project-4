@@ -22,15 +22,15 @@ set -euo pipefail
 # ─── Resolve script directory (run from anywhere) ────────────────────────────
 SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -P)"
 
-# ─── Load defaults from .env.example (CRLF-safe) ─────────────────────────────
-# -f guard keeps it a no-op when absent.
-ENV_FILE="${SCRIPT_DIR}/.env.example"
-if [[ -f "$ENV_FILE" ]]; then
-  # Apply each KEY=VALUE from the defaults file with FALLBACK semantics: a
-  # variable already present in the caller's environment is preserved and the
-  # default is ignored. We deliberately do NOT `source` the file, because raw
-  # assignments would hard-override caller-supplied env (e.g. NEW_REALM_NAME).
-  # CRLF-safe: a trailing CR is stripped from every line.
+# ─── Load app configuration, then scaffold defaults (CRLF-safe) ─────────────
+# The Next.js .env file is not automatically inherited by this Bash script.
+# Caller-provided environment variables take precedence, followed by the app's
+# .env, followed by the scaffold's init/.env.example defaults. Parse values as
+# data rather than sourcing a file that could execute shell commands.
+APP_DIR="$(cd -- "${SCRIPT_DIR}/.." >/dev/null 2>&1 && pwd -P)"
+load_env_fallback() {
+  local env_file="$1" _env_line _env_key _env_val
+  [[ -f "$env_file" ]] || return 0
   while IFS= read -r _env_line || [[ -n "$_env_line" ]]; do
     _env_line="${_env_line%$'\r'}"
     if [[ "$_env_line" =~ ^[[:space:]]*(#|$) ]]; then
@@ -50,9 +50,14 @@ if [[ -f "$ENV_FILE" ]]; then
         printf -v "$_env_key" '%s' "$_env_val"
       fi
     fi
-  done < "$ENV_FILE"
-  unset _env_line _env_key _env_val
-fi
+  done < "$env_file"
+}
+load_env_fallback "${APP_DIR}/.env"
+# The container's bootstrap variables and the init script's variables name
+# the same credentials. Explicit KC_USER/KC_PASSWORD values still win.
+KC_USER="${KC_USER:-${KC_BOOTSTRAP_ADMIN_USERNAME:-}}"
+KC_PASSWORD="${KC_PASSWORD:-${KC_BOOTSTRAP_ADMIN_PASSWORD:-}}"
+load_env_fallback "${SCRIPT_DIR}/.env.example"
 
 # ─── Defaults (override via env) ─────────────────────────────────────────────
 TIDECLOAK_LOCAL_URL="${TIDECLOAK_LOCAL_URL:-http://localhost:8080}"
@@ -61,11 +66,19 @@ NEW_REALM_NAME="${NEW_REALM_NAME:-nextjs-test}"
 REALM_MGMT_CLIENT_ID="${REALM_MGMT_CLIENT_ID:-realm-management}"
 ADMIN_ROLE_NAME="${ADMIN_ROLE_NAME:-tide-realm-admin}"
 KC_USER="${KC_USER:-admin}"
-KC_PASSWORD="${KC_PASSWORD:-password}"
+KC_PASSWORD="${KC_PASSWORD:-}"
 CLIENT_NAME="${CLIENT_NAME:-myclient}"
 SUBSCRIPTION_EMAIL="${SUBSCRIPTION_EMAIL:-test@demo.org}"
-ADAPTER_OUTPUT_PATH="${ADAPTER_OUTPUT_PATH:-${SCRIPT_DIR}/tidecloak.json}"
+ADAPTER_OUTPUT_PATH="${ADAPTER_OUTPUT_PATH:-${APP_DIR}/tidecloak.json}"
 MARKER_DIR="${SCRIPT_DIR}"
+
+# Never try to authenticate with a missing or scaffold placeholder password.
+# Fail before creating a realm or changing any TideCloak state.
+if [[ -z "$KC_PASSWORD" || "$KC_PASSWORD" == "REPLACE_ME_DO_NOT_USE_LITERALLY" || "$KC_PASSWORD" == "<CHOOSE_A_PASSWORD>" ]]; then
+  echo "ERROR: Set KC_BOOTSTRAP_ADMIN_PASSWORD in ${APP_DIR}/.env to the password used for docker run." >&2
+  echo "       Alternatively, pass KC_PASSWORD as an environment variable." >&2
+  exit 1
+fi
 
 # ─── Find realm.json robustly ────────────────────────────────────────────────
 # Priority: env → same dir → parent → current working dir
