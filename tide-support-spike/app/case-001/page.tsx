@@ -129,6 +129,20 @@ export default function CaseOnePage() {
     setEncryptBusy(true)
     setEncryptStatus('')
     setEncryptOk(null)
+
+    // Blank/whitespace-only content must never overwrite existing case data.
+    // Checked again here (not just via the disabled button) so a
+    // programmatic call or a race with the button's disabled state can't
+    // bypass it — trim() is used only to detect blank input; the untrimmed
+    // noteText is what actually gets encrypted below, so meaningful
+    // leading/trailing whitespace a user intentionally typed is preserved.
+    if (noteText.trim().length === 0) {
+      setEncryptOk(false)
+      setEncryptStatus('Please enter case content before encrypting — blank or whitespace-only input is not allowed.')
+      setEncryptBusy(false)
+      return
+    }
+
     try {
       const policyBytes = await fetchPolicyBytes()
       const { IAMService } = await import('@tidecloak/js')
@@ -302,7 +316,7 @@ export default function CaseOnePage() {
               <button
                 onClick={onEncrypt}
                 className="btn btn-primary"
-                disabled={encryptBusy || !noteText}
+                disabled={encryptBusy || noteText.trim().length === 0}
                 aria-busy={encryptBusy}
                 style={{ alignSelf: 'flex-start' }}
               >
