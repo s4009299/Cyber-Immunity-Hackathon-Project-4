@@ -1,0 +1,47 @@
+# Never send real secrets, runtime data, or backups into the build context.
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+
+# Runtime data: case ciphertext, signed policy bytes, TideCloak's own H2
+# database, and local backups. Supplied at container start via a bind mount
+# (docker-compose.yml), never baked into the image.
+data/
+
+# Dependencies and build output — reinstalled/rebuilt inside the image.
+node_modules/
+.next/
+out/
+build/
+
+# Forseti local scratch files (vuid, computed contract hashes) — never ship.
+forseti-check/owner-vuid.txt
+forseti-check/contractId.txt
+
+# One-time Tide enrollment links, if a scratch file is present locally.
+enrollment-link.txt
+**/enrollment-link.txt
+
+# Test artifacts and tooling not needed in the production image.
+e2e/
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+playwright.config.ts
+
+# Realm bootstrap scripts — not needed at runtime, only for `npm run init`.
+init/
+
+# VCS and editor/OS noise.
+.git/
+.gitignore
+.vscode/
+.DS_Store
+Thumbs.db
+*.log
+
+# Docs not needed inside the image.
+*.md

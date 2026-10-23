@@ -15,8 +15,12 @@ import { logSafeError } from '../../../../lib/safeLog'
 //
 // Per Tide canon: the realm admin policy is named exactly "tide-realm-admin".
 // Do not fall back to policies[0] if the name lookup misses — fail loudly.
+//
+// TIDECLOAK_INTERNAL_URL lets this server-side call reach TideCloak by a
+// container-network address (e.g. http://tidecloak-fix:8080) when this app
+// runs inside Docker — see the matching comment in owner-vuid/route.ts.
 
-const TIDECLOAK_URL = 'http://localhost:8080'
+const TIDECLOAK_URL = process.env.TIDECLOAK_INTERNAL_URL || 'http://localhost:8080'
 const REALM = 'support-spike'
 
 async function getAdminToken(): Promise<string> {

@@ -8,8 +8,15 @@ import { logSafeError } from '../../../../lib/safeLog'
 // admin token server-side (KC_BOOTSTRAP_ADMIN_PASSWORD, never exposed to the
 // browser). The response contains only the vuid string, never a token, a
 // password, or the customer's tideUserKey.
+//
+// TIDECLOAK_INTERNAL_URL lets this server-side call reach TideCloak by a
+// container-network address (e.g. http://tidecloak-fix:8080) when this app
+// runs inside Docker, where "localhost" would otherwise resolve to the app's
+// own container rather than the TideCloak container. The browser-facing
+// auth-server-url in tidecloak.json is unaffected and stays localhost:8080,
+// since the browser runs on the host, not inside this container.
 
-const TIDECLOAK_URL = 'http://localhost:8080'
+const TIDECLOAK_URL = process.env.TIDECLOAK_INTERNAL_URL || 'http://localhost:8080'
 const REALM = 'support-spike'
 
 async function getAdminToken(): Promise<string> {

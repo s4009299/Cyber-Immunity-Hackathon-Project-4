@@ -25,7 +25,10 @@ import { logSafeError } from '../../../../../lib/safeLog'
 
 const DATA_DIR = join(process.cwd(), 'data', 'case-content')
 const CASE_KEY = 'case-001'
-const TIDECLOAK_URL = 'http://localhost:8080'
+// TIDECLOAK_INTERNAL_URL lets this server-side call reach TideCloak by a
+// container-network address (e.g. http://tidecloak-fix:8080) when this app
+// runs inside Docker — see the matching comment in owner-vuid/route.ts.
+const TIDECLOAK_URL = process.env.TIDECLOAK_INTERNAL_URL || 'http://localhost:8080'
 const REALM = 'support-spike'
 const OWNER_USERNAME = 'customer1'
 

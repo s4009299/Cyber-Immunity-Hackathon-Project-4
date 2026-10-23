@@ -1,0 +1,70 @@
+# Secure IT Support Portal — containerised app only.
+#
+# This file does NOT define or manage the TideCloak container. Your existing
+# TideCloak container (realm, enrolled identities, signed policy, and case
+# data) is preserved exactly as-is and is expected to already be running on
+# the host, with its own data/ bind mount intact. This file does not assume
+# any particular name for that container — see TIDECLOAK_CONTAINER_NAME
+# below.
+#
+# This app container reaches TideCloak two different ways, intentionally:
+#   - The BROWSER reaches TideCloak directly at http://localhost:8080,
+#     because the browser runs on the host, where that port is already
+#     published by your existing TideCloak container. No change needed.
+#   - This app's own SERVER-SIDE code (a few admin API routes) reaches
+#     TideCloak via TIDECLOAK_INTERNAL_URL, built below from
+#     TIDECLOAK_CONTAINER_NAME — "localhost" from inside this container
+#     would otherwise mean this container, not TideCloak. Confirmed directly
+#     in testing: localhost:8080 from inside the app container is refused;
+#     http://<tidecloak-container-name>:8080 succeeds.
+#
+# TIDECLOAK_CONTAINER_NAME: set this to your TideCloak container's actual
+# name if it isn't "tidecloak-fix" (e.g. in tide-support-spike/.env, add a
+# line: TIDECLOAK_CONTAINER_NAME=your-container-name). Docker Compose reads
+# .env in this directory automatically for ${...} substitution below — this
+# is separate from the env_file directive, which injects the same file's
+# variables into the running container's process.env.
+#
+# For the container-network address to resolve, your TideCloak container
+# must be attached to the same Docker network as this service. See
+# README.md for the exact one-time `docker network connect` command — this
+# compose file does not do it automatically, so your TideCloak container is
+# never restarted or reconfigured by `docker compose up`.
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: secure-support-portal:latest
+    container_name: secure-support-portal
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./.env
+    environment:
+      - NODE_ENV=production
+      - TIDECLOAK_INTERNAL_URL=http://${TIDECLOAK_CONTAINER_NAME:-tidecloak-fix}:8080
+    volumes:
+      # Narrowed to exactly the two subdirectories this app's own API routes
+      # read/write (case ciphertext, signed policy bytes). TideCloak's H2
+      # database files and the local _backups/ directory live alongside
+      # these in the same host data/ directory but are deliberately NOT
+      # mounted here — this app container has no need to see them, and not
+      # mounting them means it can't touch them even by accident. Both
+      # subdirectories persist on the host across container
+      # rebuilds/restarts, exactly as they do for a non-Docker
+      # `npm run start` — these are the real directories, not copies.
+      - ./data/case-content:/app/data/case-content
+      - ./data/signed-policies:/app/data/signed-policies
+    networks:
+      - tide-portal-net
+    restart: unless-stopped
+
+networks:
+  tide-portal-net:
+    # Pre-created manually (see README.md) so that your existing TideCloak
+    # container — whatever it's named — can be attached to it with
+    # `docker network connect` without this compose file ever creating,
+    # owning, or tearing down that network.
+    external: true
